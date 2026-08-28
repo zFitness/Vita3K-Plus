@@ -49,6 +49,13 @@ jobs:
           ref: ${{ github.event.inputs.branch || github.ref }}
           # Full history so the predicted release tag matches the build job's "git rev-list --count".
           fetch-depth: 0
+          # Only commits are needed for the tag prediction, so skip every historical blob.
+          filter: blob:none
+          # This job only stats a handful of paths; root files come with cone mode for free.
+          sparse-checkout: |
+            data
+            vita3k/shaders-builtin
+            android
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -215,17 +222,36 @@ jobs:
           ref: ${{ github.event.inputs.branch || github.ref }}
           # vita3k/CMakeLists.txt runs "git rev-list HEAD --count" for the build number
           fetch-depth: 0
-          submodules: recursive
+          # ... but only the commit list is needed, so historical blobs can stay on the server.
+          filter: blob:none
+          # Submodules are fetched shallowly in the next step instead: fetch-depth 0 would drag the
+          # full history of all 28 of them, and only this repository's history feeds a build input.
+          submodules: false
+
+      - name: Check out submodules (shallow)
+        run: |
+          set -euo pipefail
+          git submodule sync --recursive
+          # --depth 1 fails when a submodule pins a commit that is not a branch tip, so fall back
+          # to a full submodule clone rather than building against missing sources.
+          git submodule update --init --recursive --depth 1 --jobs 4 --recommend-shallow \
+            || git submodule update --init --recursive --jobs 4
 
       - name: Restore vcpkg cache
         uses: actions/cache@v5
         with:
+          # "packages" holds multi-GB intermediate build trees that vcpkg can regenerate from
+          # "archives", so caching it only slowed the save step down. "archives" is vcpkg's own
+          # binary cache: on a key miss it turns a 15-20 min rebuild into an unzip.
           path: |
             ${{ env.VCPKG_ROOT }}/installed
-            ${{ env.VCPKG_ROOT }}/packages
-          key: nightly-vcpkg-${{ env.VCPKG_TRIPLET }}-${{ hashFiles('vcpkg.json', 'CMakeLists.txt', 'cmake/**') }}
+            ~/.cache/vcpkg/archives
+          # Keyed on vcpkg.json alone (it carries builtin-baseline, so version bumps are covered).
+          # CMakeLists.txt and cmake/** change on nearly every commit here and do not affect which
+          # ports vcpkg builds, so hashing them just guaranteed a miss plus a full re-upload.
+          key: nightly-vcpkg-${{ env.VCPKG_TRIPLET }}-v2-${{ hashFiles('vcpkg.json') }}
           restore-keys: |
-            nightly-vcpkg-${{ env.VCPKG_TRIPLET }}-
+            nightly-vcpkg-${{ env.VCPKG_TRIPLET }}-v2-
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -243,28 +269,49 @@ jobs:
       - name: Set up Android SDK tools
         uses: android-actions/setup-android@v4
 
+      # CMakeLists.txt picks ccache up from PATH on its own via CMAKE_CXX_COMPILER_LAUNCHER.
       - uses: hendrikmuhs/ccache-action@v1.2.23
         with:
           key: nightly-android-ccache
+          # The action defaults to 500M, but an arm64 Release build of 455 translation units plus
+          # externals produces well over that, so every run used to evict the previous run's
+          # objects and recompile from scratch.
+          max-size: 2G
+          verbose: 1
 
       - name: Install Android SDK packages and NDK
         run: |
           set -euo pipefail
-          set +o pipefail
-          yes | sdkmanager --licenses > /dev/null
-          set -o pipefail
-          sdkmanager --install \
-            "platforms;android-${ANDROID_API_LEVEL}" \
-            "build-tools;${ANDROID_BUILD_TOOLS}" \
-            "ndk;${ANDROID_NDK_VERSION}"
           sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          # The runner image usually ships the platform and build-tools already; only the pinned NDK
+          # reliably needs downloading. Resolving the licence prompt and re-running sdkmanager for
+          # packages that are already on disk costs minutes for nothing.
+          packages=()
+          [ -d "${sdk_root}/platforms/android-${ANDROID_API_LEVEL}" ] \
+            || packages+=("platforms;android-${ANDROID_API_LEVEL}")
+          [ -d "${sdk_root}/build-tools/${ANDROID_BUILD_TOOLS}" ] \
+            || packages+=("build-tools;${ANDROID_BUILD_TOOLS}")
+          [ -d "${sdk_root}/ndk/${ANDROID_NDK_VERSION}" ] \
+            || packages+=("ndk;${ANDROID_NDK_VERSION}")
+          if [ ${#packages[@]} -ne 0 ]; then
+            echo "Installing: ${packages[*]}"
+            set +o pipefail
+            yes | sdkmanager --licenses > /dev/null
+            set -o pipefail
+            sdkmanager --install "${packages[@]}"
+          else
+            echo "Platform, build-tools and NDK are all already present."
+          fi
           echo "ANDROID_NDK_HOME=${sdk_root}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
 
       - name: Install native dependencies with vcpkg
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y ninja-build
+          # Both the runner image and the Android SDK ship ninja; only pay for apt when it is absent.
+          if ! command -v ninja > /dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y ninja-build
+          fi
           vcpkg install --triplet "$VCPKG_TRIPLET"
 
       - name: Stage emulator assets
@@ -290,6 +337,23 @@ jobs:
           # Fail loudly here rather than shipping a debug-signed APK from a corrupt secret.
           keytool -list -keystore "$keystore" -storepass "$SIGNING_STORE_PASSWORD" > /dev/null
           echo "SIGNING_STORE_PATH=$keystore" >> "$GITHUB_ENV"
+
+      # Without this the cache restored above is nearly useless: AGP compiles into
+      # app/.cxx/nightly/<config-hash>/arm64-v8a, so the absolute paths baked into ccache's hashes
+      # change whenever that hash changes, and vita3k/android/jni/native_bootstrap.cpp uses
+      # __DATE__/__TIME__, which ccache refuses to cache unless told to.
+      - name: Configure ccache for the native build
+        run: |
+          set -euo pipefail
+          {
+            echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE"
+            echo "CCACHE_NOHASHDIR=true"
+            echo "CCACHE_SLOPPINESS=time_macros,include_file_mtime,include_file_ctime,pch_defines,locale"
+            echo "CCACHE_COMPRESS=1"
+          } >> "$GITHUB_ENV"
+          # Zero the counters so the "Print ccache statistics" step reports this run's hit rate
+          # rather than the restored cache's lifetime totals.
+          ccache -z
 
       - name: Build nightly APK
         working-directory: android
