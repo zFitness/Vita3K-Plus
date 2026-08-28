@@ -6,6 +6,9 @@ on:
   push:
     branches:
       - dev-nightly
+    # Documentation-only pushes are not worth a full NDK rebuild. workflow_dispatch is unaffected.
+    paths-ignore:
+      - '**.md'
   workflow_dispatch:
     inputs:
       branch:
@@ -137,7 +140,7 @@ jobs:
       - name: Collect APK
         run: |
           set -euo pipefail
-          # Same identifiers c-cpp.yml uses for its releases, so build numbers stay comparable.
+          # Build number matches vita3k/CMakeLists.txt's "git rev-list HEAD --count".
           build_number="$(git rev-list --count HEAD)"
           short_sha="$(git rev-parse --short HEAD)"
           out_dir=android/app/build/outputs/apk/nightly

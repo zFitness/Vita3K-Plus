@@ -67,7 +67,7 @@ https://github.com/zFitness/Vita3K-Plus/issues
 ## Code Changes
 Check the all-enhancements branch for the all code changes
 
-This ZM branch is developed on `dev-nightly`, and its CI ([`c-cpp.yml`](./.github/workflows/c-cpp.yml)) only builds the Android target.
+This ZM branch is developed on `dev-nightly`, and its CI ([`nightly-android.yml`](./.github/workflows/nightly-android.yml)) only builds the Android target.
 
 Below is the original Vita3k's README:
 ---

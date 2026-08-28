@@ -67,7 +67,7 @@ https://github.com/zFitness/Vita3K-Plus/issues
 ## 代码改动
 所有代码改动请查看 all-enhancements 分支
 
-本 ZM 分支在 `dev-nightly` 上开发，其 CI（[`c-cpp.yml`](./.github/workflows/c-cpp.yml)）仅构建 Android 目标。
+本 ZM 分支在 `dev-nightly` 上开发，其 CI（[`nightly-android.yml`](./.github/workflows/nightly-android.yml)）仅构建 Android 目标。
 
 以下是原版 Vita3K 的 README：
 ---
