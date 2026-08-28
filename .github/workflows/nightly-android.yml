@@ -27,9 +27,174 @@ env:
   VCPKG_TRIPLET: arm64-android
 
 jobs:
+  # A missing or wrong signing secret only surfaces 50-75 min into the native build, so validate
+  # everything the build and the release step need in a job that finishes in seconds.
+  preflight:
+    name: Preflight checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    # Superseded runs should not hold a runner; the group name differs from the build job's because
+    # jobs sharing a concurrency group cancel each other.
+    concurrency:
+      group: nightly-android-preflight-${{ github.event.inputs.branch || github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Check out ${{ github.event.inputs.branch || github.ref_name }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+          # Full history so the predicted release tag matches the build job's "git rev-list --count".
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Check signing secrets are present
+        env:
+          SIGNING_STORE_BASE64: ${{ secrets.SIGNING_STORE_BASE64 }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in SIGNING_STORE_BASE64 SIGNING_STORE_PASSWORD SIGNING_KEY_ALIAS SIGNING_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing repository secret(s): ${missing[*]}. Without them android/app/build.gradle falls back to a debug key."
+            exit 1
+          fi
+          echo "All four signing secrets are set."
+
+      - name: Validate keystore, alias and passwords
+        env:
+          SIGNING_STORE_BASE64: ${{ secrets.SIGNING_STORE_BASE64 }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keystore="$RUNNER_TEMP/preflight.jks"
+          # Tolerate the wrapped base64 that "base64 -w0" avoids but pasted secrets often contain.
+          if ! printf '%s' "$SIGNING_STORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$keystore" 2>/dev/null; then
+            echo "::error::SIGNING_STORE_BASE64 is not valid base64."
+            exit 1
+          fi
+          if [ ! -s "$keystore" ]; then
+            echo "::error::SIGNING_STORE_BASE64 decoded to an empty file."
+            exit 1
+          fi
+          if ! keytool -list -keystore "$keystore" -storepass "$SIGNING_STORE_PASSWORD" > /dev/null 2>&1; then
+            echo "::error::Cannot open the keystore: SIGNING_STORE_BASE64 is corrupt or SIGNING_STORE_PASSWORD is wrong."
+            exit 1
+          fi
+          if ! keytool -list -keystore "$keystore" -storepass "$SIGNING_STORE_PASSWORD" -alias "$SIGNING_KEY_ALIAS" > /dev/null 2>&1; then
+            echo "::error::SIGNING_KEY_ALIAS does not exist in the keystore. Aliases present:"
+            keytool -list -keystore "$keystore" -storepass "$SIGNING_STORE_PASSWORD" 2>/dev/null \
+              | awk -F, '/PrivateKeyEntry|trustedCertEntry/ { print "  " $1 }' >&2 || true
+            exit 1
+          fi
+          # keytool -list never touches the key password and keytool -certreq silently accepts a
+          # wrong one on PKCS12 stores, so sign a throwaway jar: that is the same code path Gradle
+          # uses and it is the only check that actually fails on a bad SIGNING_KEY_PASSWORD.
+          probe_dir="$RUNNER_TEMP/keyprobe"
+          mkdir -p "$probe_dir"
+          : > "$probe_dir/probe.txt"
+          jar --create --file "$probe_dir/probe.jar" -C "$probe_dir" probe.txt
+          if ! jarsigner -keystore "$keystore" -storepass "$SIGNING_STORE_PASSWORD" \
+                 -keypass "$SIGNING_KEY_PASSWORD" "$probe_dir/probe.jar" "$SIGNING_KEY_ALIAS" > /dev/null 2>&1; then
+            echo "::error::Cannot sign with alias '$SIGNING_KEY_ALIAS': SIGNING_KEY_PASSWORD is most likely wrong."
+            exit 1
+          fi
+          echo "Keystore opens, alias exists and both passwords sign successfully."
+          # An expired certificate still signs, but Play/installers may reject it later, so warn.
+          valid_until="$(keytool -list -v -keystore "$keystore" -storepass "$SIGNING_STORE_PASSWORD" \
+            -alias "$SIGNING_KEY_ALIAS" 2>/dev/null | sed -n 's/.*until: //p' | head -1)"
+          if [ -n "$valid_until" ]; then
+            echo "Certificate valid until: $valid_until"
+            if [ "$(date -d "$valid_until" +%s 2>/dev/null || echo 0)" -lt "$(date +%s)" ]; then
+              echo "::warning::The signing certificate has expired ($valid_until)."
+            fi
+          fi
+
+      - name: Check build inputs exist
+        run: |
+          set -euo pipefail
+          missing=()
+          for path in vcpkg.json CMakeLists.txt data vita3k/shaders-builtin \
+                      android/gradlew android/app/build.gradle android/gradle/wrapper/gradle-wrapper.properties; do
+            [ -e "$path" ] || missing+=("$path")
+          done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing path(s) required by the build: ${missing[*]}"
+            exit 1
+          fi
+          # The build job runs :app:assembleNightly, so the build type has to exist on this ref.
+          if ! grep -qE '^[[:space:]]*nightly[[:space:]]*\{' android/app/build.gradle; then
+            echo "::error::android/app/build.gradle has no nightly build type; :app:assembleNightly would fail."
+            exit 1
+          fi
+          # The signing config only takes effect when gradle reads these env vars.
+          for var in SIGNING_STORE_PATH SIGNING_STORE_PASSWORD SIGNING_KEY_ALIAS SIGNING_KEY_PASSWORD; do
+            grep -q "$var" android/app/build.gradle || {
+              echo "::error::android/app/build.gradle no longer reads $var; the APK would be debug-signed."
+              exit 1
+            }
+          done
+          # This workflow's env pins the SDK/NDK it installs; a drift from build.gradle means Gradle
+          # either re-downloads a second NDK or fails outright an hour in.
+          gradle_ndk="$(sed -n 's/.*ndkVersion[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' android/app/build.gradle | head -1)"
+          if [ -n "$gradle_ndk" ] && [ "$gradle_ndk" != "$ANDROID_NDK_VERSION" ]; then
+            echo "::error::ndkVersion in android/app/build.gradle ($gradle_ndk) != workflow ANDROID_NDK_VERSION ($ANDROID_NDK_VERSION)."
+            exit 1
+          fi
+          gradle_sdk="$(sed -n 's/.*compileSdk[[:space:]]*=[[:space:]]*\([0-9]*\).*/\1/p' android/app/build.gradle | head -1)"
+          if [ -n "$gradle_sdk" ] && [ "$gradle_sdk" != "$ANDROID_API_LEVEL" ]; then
+            echo "::error::compileSdk in android/app/build.gradle ($gradle_sdk) != workflow ANDROID_API_LEVEL ($ANDROID_API_LEVEL)."
+            exit 1
+          fi
+          echo "Build inputs present; NDK $gradle_ndk and compileSdk $gradle_sdk match the workflow env."
+
+      - name: Check release publishing prerequisites
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh auth status
+          build_number="$(git rev-list --count HEAD)"
+          short_sha="$(git rev-parse --short HEAD)"
+          tag="android-nightly-${build_number}-${short_sha}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "::error::Release $tag already exists; the build job's gh release create would fail after ~1h of work."
+            exit 1
+          fi
+          echo "GitHub CLI is authenticated and tag $tag is free."
+
+      - name: Preflight summary
+        run: |
+          set -euo pipefail
+          {
+            echo "### Preflight passed"
+            echo
+            echo "- Signing secrets present and verified against the keystore"
+            echo "- Build inputs and nightly build type present"
+            echo "- GitHub CLI authenticated for release publishing"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   nightly-apk:
     name: Nightly APK (arm64-v8a)
     runs-on: ubuntu-latest
+    needs: preflight
     timeout-minutes: 150
 
     # gh release create needs write access to the repository contents.
@@ -121,7 +286,7 @@ jobs:
             exit 1
           fi
           keystore="$RUNNER_TEMP/vita3kplus-release.jks"
-          printf '%s' "$SIGNING_STORE_BASE64" | base64 --decode > "$keystore"
+          printf '%s' "$SIGNING_STORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$keystore"
           # Fail loudly here rather than shipping a debug-signed APK from a corrupt secret.
           keytool -list -keystore "$keystore" -storepass "$SIGNING_STORE_PASSWORD" > /dev/null
           echo "SIGNING_STORE_PATH=$keystore" >> "$GITHUB_ENV"
