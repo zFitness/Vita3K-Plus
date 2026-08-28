@@ -85,19 +85,6 @@ jobs:
           sudo apt-get install -y ninja-build
           vcpkg install --triplet "$VCPKG_TRIPLET"
 
-      - name: Work around the missing ic_launcher_plus.png
-        # The "Name and Icon Change" commit on all-enhancements references @mipmap/ic_launcher_plus
-        # from AndroidManifest.xml, splash_icon.xml, AppsListScreen.kt and InitialSetupScreen.kt but
-        # never committed the file, which makes aapt2 fail. Fall back to the stock icon if the
-        # branch being built still lacks it.
-        run: |
-          set -euo pipefail
-          mipmap=android/app/src/main/res/mipmap
-          if [ ! -f "$mipmap/ic_launcher_plus.png" ]; then
-            echo "ic_launcher_plus.png missing, copying ic_launcher.png in its place"
-            cp "$mipmap/ic_launcher.png" "$mipmap/ic_launcher_plus.png"
-          fi
-
       - name: Stage emulator assets
         run: |
           set -euo pipefail
