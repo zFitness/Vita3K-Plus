@@ -1,10 +1,14 @@
 # Vita3K+
 
-A fork of Vita3K with additional game compatibility and rendering fixes. All credit for the emulator itself belongs to the Vita3K team.
+English | [简体中文](./README.zh-CN.md)
+
+A fork of [Vita3K+](https://github.com/nckstwrt/Vita3K-Plus) maintained by **zFitness (ZM)**, which itself is a fork of Vita3K with additional game compatibility and rendering fixes. The Android builds published here are named **Vita3K+ ZM** on the launcher, where `ZM` is simply the maintainer tag for this branch. All credit for the emulator itself belongs to the Vita3K team, and for the compatibility work to the Vita3K+ author.
 
 ## Download
 
-https://github.com/nckstwrt/Vita3K-Plus/releases
+https://github.com/zFitness/Vita3K-Plus/releases
+
+Android nightly APKs are published automatically by [`nightly-android.yml`](./.github/workflows/nightly-android.yml) under tags like `android-nightly-<build>-<sha>`.
 
 ## Enhancements
 
@@ -58,10 +62,12 @@ See the **[Screenshots page](./Screenshots.md)** for the games above running in 
 
 ## Report Issues and Problems
 
-https://github.com/nckstwrt/Vita3K-Plus/issues
+https://github.com/zFitness/Vita3K-Plus/issues
 
 ## Code Changes
 Check the all-enhancements branch for the all code changes
+
+This ZM branch is developed on `dev-nightly`, and its CI ([`c-cpp.yml`](./.github/workflows/c-cpp.yml)) only builds the Android target.
 
 Below is the original Vita3k's README:
 ---

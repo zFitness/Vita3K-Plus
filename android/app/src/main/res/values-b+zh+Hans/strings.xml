@@ -1,6 +1,6 @@
 <resources>
     <!-- App name -->
-    <string name="app_name">Vita3K</string>
+    <string name="app_name">Vita3K+ ZM</string>
 
     <!-- Common actions -->
     <string name="action_ok">确定</string>
@@ -38,7 +38,7 @@
     <string name="app_action_reset_last_played">重置最近游玩记录</string>
 
     <!-- Apps list screen -->
-    <string name="apps_list_app_title">Vita3K</string>
+    <string name="apps_list_app_title">Vita3K+ ZM</string>
     <plurals name="apps_list_n_selected">
         <item quantity="one">已选择 %1$d 项</item>
         <item quantity="other">已选择 %1$d 项</item>
@@ -157,6 +157,7 @@
     <!-- About sheet -->
     <string name="about_build">版本：%1$s</string>
     <string name="about_revision">修订版本：%1$s</string>
+    <string name="about_fork_notice">Vita3K+ ZM 是由 zFitness（ZM）维护的 Vita3K+ 社区构建版。模拟器本体由 Vita3K 团队开发。</string>
     <string name="about_legal_notice">Vita3K 不支持任何盗版行为。请使用您自行导出的游戏。</string>
 
     <!-- Updates -->
@@ -173,8 +174,8 @@
     <string name="updates_summary_custom_build_with_date">您当前运行的是非官方版本或 PR 版本。\n\n如果更新，将切换到最新的官方版本，不再使用当前的自定义版本或 PR 版本。\n\n最新官方版本：%1$s\n发布时间：%2$s</string>
 
     <!-- Initial setup -->
-    <string name="initial_setup_welcome_title">欢迎使用 Vita3K</string>
-    <string name="initial_setup_welcome_body">Vita3K 是一款使用 C++ 编写的开源 PlayStation Vita 模拟器，支持 Windows、Linux、macOS 和 Android。模拟器仍在积极开发中，非常欢迎您的反馈和测试。</string>
+    <string name="initial_setup_welcome_title">欢迎使用 Vita3K+ ZM</string>
+    <string name="initial_setup_welcome_body">本版本是 Vita3K+ ZM，由 zFitness（ZM）维护的 Vita3K+ 分支构建。Vita3K 是一款使用 C++ 编写的开源 PlayStation Vita 模拟器，支持 Windows、Linux、macOS 和 Android。模拟器仍在积极开发中，非常欢迎您的反馈和测试。</string>
     <string name="initial_setup_piracy_notice">Vita3K 不支持任何盗版行为。请使用您自行导出的游戏。</string>
     <string name="initial_setup_firmware_title">安装固件</string>
     <string name="initial_setup_firmware_body">开始之前，请先安装下面的 PS Vita 固件文件。</string>

@@ -852,6 +852,13 @@ private fun AboutSheet(
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            Text(
+                text = stringResource(R.string.about_fork_notice),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+
             HtmlText(
                 html = ABOUT_DESCRIPTION_HTML,
                 modifier = Modifier.fillMaxWidth(),
