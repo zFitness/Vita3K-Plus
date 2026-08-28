@@ -1,3 +1,71 @@
+# Vita3K+
+
+A fork of Vita3K with additional game compatibility and rendering fixes. All credit for the emulator itself belongs to the Vita3K team.
+
+## Download
+
+https://github.com/nckstwrt/Vita3K-Plus/releases
+
+## Enhancements
+
+# v1.1 (Not Yet Released)
+- **Dead Or Alive 5 Plus** - Working - On Android requires Adreno, Turnip and the new setting Thread Scheduling Accuracy On
+- **Metal Gear Solid 3** - Freezes fixed/worked around. Blending graphics fixed. On-Screen Touchpad fixes.
+- **Resistance** - Rendering issues fixed on Android
+- **Assassin's Creed III: Liberation**: Sound issues resolved
+- **Killzone** - Fix for the crash occurring at level 5
+- **Neptunia Re;Birth1** - Fix for crash after selecting New Game and background images not showing
+- **Little Big Planet** - "Vignette" shading and background images fixed
+- **Ys: Memories of Celcetta** Graphics Fixed
+- **Ragnarok Odyssey ACE** Graphics Fixed
+- **Ninja Gaiden Sigma 2 Plus** Graphics Fixed
+- **ModNation: Racers Road Trip** - Regression Fixed
+- **RESOGUN** - Graphics issues now fixed
+- **Omega Labyrinth** - Loading fixed by nishinji
+- Defaults now to External Host for Windows and Native Buffer on Android. **Use these Memory Mapping options for the best compatibility**
+- Lots of memory and sound improvements
+- Thanks to Reyes for all his help testing!
+
+# v1.0
+- **Killzone** Plays well and looks amazing
+- **Resistance** Colours are now all good. Intermittent freezing has been fixed.
+- **Assassin's Creed III: Liberation**: Graphical issues fixed
+- **LittleBigPlanet**: Missing backgrounds, starting sounds and other graphics fixed
+- **Need for Speed: Most Wanted**: floating badges fixed, headlights through the road fixed, sound fixed (mostly).
+- **Call of Duty: Declassified** Boots and plays well now
+- **Uncharted** Now plays at any resolution plus minor fixes
+- **Devious Dungeon** Now launches fine
+- **Sonic Transformed** Plays well and looks amazing (new per game thread accuracy setting to ensure a good startup)
+- **Spider-Man** No longer sometimes hangs on load.
+- **Helldivers** No longer sometimes crashes at startup
+- **Soul Sacrifice Delta**: Graphical issues fixed
+- **Minecraft** was a white screen in Vulkan, now fixed
+- **Kancolle Kai** Now plays without getting stuck at the difficulty selection screen
+  
+Hopefully a lot of crash bugs and freezing have been fixed by these changes. Other games may now be a lot better or possibly worse with this version.
+
+## Notes
+
+- The settings now default to High Quality
+- These updates were designed with higher-end devices in mind. Although I have attempted to make them work and tested on Mali based devices (i.e. Killzone works fine on a Mali-G78 MP14 device I have) that is not the goal of this fork.
+- For better character shadows in Killzone use a memory mapping of External Host on Windows or Native Buffer on Android. Double Buffer works well but makes the shadows flicker annonyingly.
+
+## New Screenshots
+
+See the **[Screenshots page](./Screenshots.md)** for the games above running in Vita3K+.
+
+[![Vita3K+ screenshots](./screenshots/KZ.jpg)](./Screenshots.md)
+
+## Report Issues and Problems
+
+https://github.com/nckstwrt/Vita3K-Plus/issues
+
+## Code Changes
+Check the all-enhancements branch for the all code changes
+
+Below is the original Vita3k's README:
+---
+
 # Vita3K
 
 [![C/C++ CI](https://github.com/Vita3K/Vita3K/actions/workflows/c-cpp.yml/badge.svg)](https://github.com/Vita3K/Vita3K/actions/workflows/c-cpp.yml)
