@@ -1,8 +1,11 @@
 name: Nightly Android APK
 
-# Manual-only: building Android from scratch costs 50-75 min of CI time, so it should not run on
-# every push. Pick the branch to build in the "Run workflow" dialog.
+# Building Android from scratch costs 50-75 min of CI time, so it only runs automatically on the
+# dedicated dev-nightly branch. For any other branch use "Run workflow" and pick the ref manually.
 on:
+  push:
+    branches:
+      - dev-nightly
   workflow_dispatch:
     inputs:
       branch:
@@ -26,11 +29,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 150
 
+    # gh release create needs write access to the repository contents.
+    permissions:
+      contents: write
+
+    # A second push while a build is running would burn another 50-75 min for an APK nobody wants,
+    # so supersede the in-flight run instead.
+    concurrency:
+      group: nightly-android-${{ github.event.inputs.branch || github.ref }}
+      cancel-in-progress: true
+
     steps:
-      - name: Check out ${{ inputs.branch }}
+      - name: Check out ${{ github.event.inputs.branch || github.ref_name }}
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.branch }}
+          # On push there is no branch input, so fall back to the ref that triggered the run.
+          ref: ${{ github.event.inputs.branch || github.ref }}
           # vita3k/CMakeLists.txt runs "git rev-list HEAD --count" for the build number
           fetch-depth: 0
           submodules: recursive
@@ -93,8 +107,28 @@ jobs:
           cp -r data android/app/assets/data
           cp -r vita3k/shaders-builtin android/app/assets/shaders-builtin
 
+      - name: Decode signing keystore
+        env:
+          SIGNING_STORE_BASE64: ${{ secrets.SIGNING_STORE_BASE64 }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SIGNING_STORE_BASE64" ]; then
+            echo "SIGNING_STORE_BASE64 is not set; the APK would fall back to a debug key." >&2
+            exit 1
+          fi
+          keystore="$RUNNER_TEMP/vita3kplus-release.jks"
+          printf '%s' "$SIGNING_STORE_BASE64" | base64 --decode > "$keystore"
+          # Fail loudly here rather than shipping a debug-signed APK from a corrupt secret.
+          keytool -list -keystore "$keystore" -storepass "$SIGNING_STORE_PASSWORD" > /dev/null
+          echo "SIGNING_STORE_PATH=$keystore" >> "$GITHUB_ENV"
+
       - name: Build nightly APK
         working-directory: android
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           chmod +x gradlew
@@ -103,6 +137,8 @@ jobs:
       - name: Collect APK
         run: |
           set -euo pipefail
+          # Same identifiers c-cpp.yml uses for its releases, so build numbers stay comparable.
+          build_number="$(git rev-list --count HEAD)"
           short_sha="$(git rev-parse --short HEAD)"
           out_dir=android/app/build/outputs/apk/nightly
           # Resolve by glob rather than hardcoding app-nightly.apk, so an archivesBaseName change
@@ -114,10 +150,25 @@ jobs:
             exit 1
           fi
           echo "Found $apk"
+          base="Vita3K-Plus-nightly-${build_number}-${short_sha}-arm64"
           mkdir -p artifacts
-          cp "$apk" "artifacts/vita3k-nightly-${short_sha}-arm64.apk"
-          echo "ARTIFACT_NAME=vita3k-nightly-${short_sha}-arm64" >> "$GITHUB_ENV"
+          cp "$apk" "artifacts/${base}.apk"
+          (cd artifacts && sha256sum "${base}.apk" > "${base}.apk.sha256")
+          {
+            echo "BUILD_NUMBER=${build_number}"
+            echo "GIT_SHORT_SHA=${short_sha}"
+            echo "GIT_FULL_SHA=$(git rev-parse HEAD)"
+            echo "RELEASE_TAG=android-nightly-${build_number}-${short_sha}"
+            echo "ARTIFACT_NAME=${base}"
+            echo "LAST_COMMIT_MESSAGE=$(git log -1 --pretty=format:'%s')"
+          } >> "$GITHUB_ENV"
           ls -al artifacts
+
+      - name: Verify APK signature
+        run: |
+          set -euo pipefail
+          build_tools="${ANDROID_SDK_ROOT:-$ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}"
+          "${build_tools}/apksigner" verify --print-certs artifacts/*.apk
 
       - name: Report APK identity
         run: |
@@ -136,3 +187,51 @@ jobs:
           path: artifacts/
           if-no-files-found: error
           retention-days: 30
+
+      # The workflow artifact above expires and needs a GitHub login to download; the release below
+      # is the permanent, publicly downloadable copy.
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REF: ${{ github.event.inputs.branch || github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/release-notes.md"
+          repo_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          # Written line by line instead of a heredoc: YAML block scalars force an indent that
+          # would end up inside the markdown.
+          {
+            echo "Automated Android nightly build of Vita3K+."
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Source ref | \`${SOURCE_REF}\` |"
+            echo "| Commit | [\`${GIT_SHORT_SHA}\`](${repo_url}/commit/${GIT_FULL_SHA}) ${LAST_COMMIT_MESSAGE} |"
+            echo "| Build number | ${BUILD_NUMBER} |"
+            echo "| ABI | arm64-v8a only |"
+            echo "| Application ID | \`org.vita3kplus.emulator.nightly\` |"
+            echo "| Workflow run | [#${RUN_NUMBER}](${repo_url}/actions/runs/${RUN_ID}) |"
+            echo
+            echo "Signed with the project nightly key, so later nightlies install as updates over"
+            echo "this one. The \`.nightly\` application ID suffix keeps the build side by side with"
+            echo "upstream Vita3K and with a non-nightly Vita3K+ build."
+            echo
+            echo "Verify the download against the accompanying \`.sha256\` file before installing."
+          } > "$notes"
+          gh release create "$RELEASE_TAG" artifacts/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GIT_FULL_SHA" \
+            --title "Android Nightly ${BUILD_NUMBER} (${GIT_SHORT_SHA})" \
+            --notes-file "$notes" \
+            --prerelease
+
+      - name: Link release in job summary
+        run: |
+          set -euo pipefail
+          {
+            echo "### Android nightly published"
+            echo
+            echo "[${RELEASE_TAG}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG})"
+          } >> "$GITHUB_STEP_SUMMARY"
