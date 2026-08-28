@@ -1,0 +1,151 @@
+name: Nightly Android APK
+
+# Manual-only: building Android from scratch costs 50-75 min of CI time, so it should not run on
+# every push. Pick the branch to build in the "Run workflow" dialog.
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch, tag or SHA to build'
+        required: true
+        default: 'all-enhancements'
+        type: string
+
+env:
+  ANDROID_API_LEVEL: '35'
+  ANDROID_BUILD_TOOLS: '36.0.0'
+  ANDROID_NDK_VERSION: '29.0.14206865'
+  VCPKG_ROOT: /usr/local/share/vcpkg
+  # all-enhancements restricts abiFilters to arm64-v8a, so building the x64-android triplet would
+  # only waste ~20 min (and its OpenSSL assembly does not build under the NDK anyway).
+  VCPKG_TRIPLET: arm64-android
+
+jobs:
+  nightly-apk:
+    name: Nightly APK (arm64-v8a)
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+
+    steps:
+      - name: Check out ${{ inputs.branch }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+          # vita3k/CMakeLists.txt runs "git rev-list HEAD --count" for the build number
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Restore vcpkg cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ env.VCPKG_ROOT }}/installed
+            ${{ env.VCPKG_ROOT }}/packages
+          key: nightly-vcpkg-${{ env.VCPKG_TRIPLET }}-${{ hashFiles('vcpkg.json', 'CMakeLists.txt', 'cmake/**') }}
+          restore-keys: |
+            nightly-vcpkg-${{ env.VCPKG_TRIPLET }}-
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          add-job-summary: on-failure
+          cache-provider: basic
+          validate-wrappers: false
+
+      - name: Set up Android SDK tools
+        uses: android-actions/setup-android@v4
+
+      - uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          key: nightly-android-ccache
+
+      - name: Install Android SDK packages and NDK
+        run: |
+          set -euo pipefail
+          set +o pipefail
+          yes | sdkmanager --licenses > /dev/null
+          set -o pipefail
+          sdkmanager --install \
+            "platforms;android-${ANDROID_API_LEVEL}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${ANDROID_NDK_VERSION}"
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          echo "ANDROID_NDK_HOME=${sdk_root}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Install native dependencies with vcpkg
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+          vcpkg install --triplet "$VCPKG_TRIPLET"
+
+      - name: Work around the missing ic_launcher_plus.png
+        # The "Name and Icon Change" commit on all-enhancements references @mipmap/ic_launcher_plus
+        # from AndroidManifest.xml, splash_icon.xml, AppsListScreen.kt and InitialSetupScreen.kt but
+        # never committed the file, which makes aapt2 fail. Fall back to the stock icon if the
+        # branch being built still lacks it.
+        run: |
+          set -euo pipefail
+          mipmap=android/app/src/main/res/mipmap
+          if [ ! -f "$mipmap/ic_launcher_plus.png" ]; then
+            echo "ic_launcher_plus.png missing, copying ic_launcher.png in its place"
+            cp "$mipmap/ic_launcher.png" "$mipmap/ic_launcher_plus.png"
+          fi
+
+      - name: Stage emulator assets
+        run: |
+          set -euo pipefail
+          mkdir -p android/app/assets
+          rm -rf android/app/assets/data android/app/assets/shaders-builtin
+          cp -r data android/app/assets/data
+          cp -r vita3k/shaders-builtin android/app/assets/shaders-builtin
+
+      - name: Build nightly APK
+        working-directory: android
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --stacktrace :app:assembleNightly
+
+      - name: Collect APK
+        run: |
+          set -euo pipefail
+          short_sha="$(git rev-parse --short HEAD)"
+          out_dir=android/app/build/outputs/apk/nightly
+          # Resolve by glob rather than hardcoding app-nightly.apk, so an archivesBaseName change
+          # upstream does not silently break the job.
+          apk="$(find "$out_dir" -maxdepth 1 -name '*.apk' -print -quit)"
+          if [ -z "$apk" ]; then
+            echo "No APK produced in $out_dir" >&2
+            ls -alR "$out_dir" >&2 || true
+            exit 1
+          fi
+          echo "Found $apk"
+          mkdir -p artifacts
+          cp "$apk" "artifacts/vita3k-nightly-${short_sha}-arm64.apk"
+          echo "ARTIFACT_NAME=vita3k-nightly-${short_sha}-arm64" >> "$GITHUB_ENV"
+          ls -al artifacts
+
+      - name: Report APK identity
+        run: |
+          set -euo pipefail
+          aapt="$(find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}" -name aapt2 -print -quit)"
+          "$aapt" dump badging artifacts/*.apk | grep -E "^package|application-label:|native-code" || true
+
+      - name: Print ccache statistics
+        if: always()
+        run: ccache -s
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 30

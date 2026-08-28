@@ -77,6 +77,28 @@ android {
 			proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
 			signingConfig = hasCiSigning ? signingConfigs.ci : signingConfigs.debug
 		}
+
+		// Nightly: identical optimisation settings to release, but a distinct applicationId and
+		// label so it installs side by side with both upstream Vita3K (org.vita3k.emulator) and a
+		// future Vita3K+ release build (org.vita3kplus.emulator).
+		// Everything is spelled out rather than using initWith, because initWith is not guaranteed
+		// to carry externalNativeBuild arguments across AGP versions and silently falling back to
+		// a Debug native build would cripple emulator performance.
+		nightly {
+			debuggable = false
+			jniDebuggable = false
+			externalNativeBuild {
+				cmake {
+					arguments "-DCMAKE_BUILD_TYPE=Release"
+				}
+			}
+			minifyEnabled = true
+			shrinkResources = true
+			proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+			matchingFallbacks = ['release']
+			applicationIdSuffix = '.nightly'
+			signingConfig = hasCiSigning ? signingConfigs.ci : signingConfigs.debug
+		}
 	}
 
 	compileOptions {

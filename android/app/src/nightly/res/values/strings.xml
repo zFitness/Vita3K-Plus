@@ -1,0 +1,4 @@
+<resources>
+    <!-- Overrides the main sourceSet value so nightly builds are distinguishable on the launcher -->
+    <string name="app_name">vita3k-nightly</string>
+</resources>
