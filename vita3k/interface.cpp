@@ -174,7 +174,8 @@ static bool install_archive_content(EmuEnvState &emuenv, const ZipPtr &zip, cons
 
     auto output_path{ emuenv.vita_fs_path / "ux0" };
     if (mz_zip_reader_extract_file_to_callback(zip.get(), (content_path + sfo_path).c_str(), &write_to_buffer, &buffer, 0)) {
-        sfo::get_param_info(emuenv.app_info, buffer, emuenv.cfg.sys_lang);
+        if (!sfo::get_param_info(emuenv.app_info, buffer, emuenv.cfg.sys_lang))
+            return false;
         if (!set_content_path(emuenv, is_theme, output_path))
             return false;
     } else if (is_theme) {

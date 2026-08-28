@@ -19,9 +19,11 @@
 #include "interface.h"
 
 #include <app/functions.h>
+#include <codec/state.h>
 #include <config/functions.h>
 #include <config/version.h>
 #include <emuenv/state.h>
+#include <fstream>
 #include <gui-qt/gui_language.h>
 #include <gui-qt/gui_settings.h>
 #include <gui-qt/log_widget.h>
@@ -35,10 +37,8 @@
 #include <packages/license.h>
 #include <packages/pkg.h>
 #include <packages/sfo.h>
-#include <shader/spirv_recompiler.h>
-#include <codec/state.h>
-#include <fstream>
 #include <regex>
+#include <shader/spirv_recompiler.h>
 #include <util/log.h>
 #include <util/string_utils.h>
 
