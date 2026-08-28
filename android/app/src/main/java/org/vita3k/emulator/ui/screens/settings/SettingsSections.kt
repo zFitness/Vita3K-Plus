@@ -18,6 +18,10 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.provider.DocumentsContract
+import android.widget.Toast
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,8 +41,10 @@ import androidx.compose.ui.unit.dp
 import org.vita3k.emulator.NativeLib
 import org.vita3k.emulator.R
 import org.vita3k.emulator.ConnectedGamepad
+import androidx.compose.ui.platform.LocalContext
 import org.vita3k.emulator.data.CustomDriverLoadStatus
 import org.vita3k.emulator.data.EmulatorConfig
+import org.vita3k.emulator.data.VitaDocumentsProvider
 import org.vita3k.emulator.data.FirmwareLinks
 import org.vita3k.emulator.data.UiLanguages
 import org.vita3k.emulator.overlay.OverlayConfig
@@ -1619,6 +1625,32 @@ private fun EmulatorSettingsSection(
                 help = SettingsHelpEntry(
                     title = storageTitle,
                     body = stringResource(R.string.settings_emulator_storage_folder_desc),
+                    scope = SettingsScope.Global
+                ),
+                onShowHelp = onShowHelp
+            )
+            val browseContext = LocalContext.current
+            val browseTitle = stringResource(R.string.settings_emulator_browse_files)
+            val browseUnavailable = stringResource(R.string.settings_emulator_browse_files_unavailable)
+            SettingsActionRow(
+                title = browseTitle,
+                value = stringResource(R.string.settings_emulator_browse_files_value),
+                onClick = {
+                    val rootUri = DocumentsContract.buildRootUri(
+                        "${browseContext.packageName}.documents", VitaDocumentsProvider.ROOT_ID
+                    )
+                    val intent = Intent(Intent.ACTION_VIEW)
+                        .setDataAndType(rootUri, DocumentsContract.Root.MIME_TYPE_ITEM)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    try {
+                        browseContext.startActivity(intent)
+                    } catch (_: ActivityNotFoundException) {
+                        Toast.makeText(browseContext, browseUnavailable, Toast.LENGTH_LONG).show()
+                    }
+                },
+                help = SettingsHelpEntry(
+                    title = browseTitle,
+                    body = stringResource(R.string.settings_emulator_browse_files_desc),
                     scope = SettingsScope.Global
                 ),
                 onShowHelp = onShowHelp

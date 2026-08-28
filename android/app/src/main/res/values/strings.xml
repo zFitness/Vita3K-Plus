@@ -754,4 +754,10 @@
     <string name="trophy_detail_earned_label">Earned</string>
     <string name="trophy_detail_description_label">Details</string>
     <string name="trophy_not_yet_earned">Not yet earned</string>
+
+    <string name="settings_emulator_browse_files">Browse Vita files</string>
+    <string name="settings_emulator_browse_files_value">Open the emulator storage in the system file browser</string>
+    <string name="settings_emulator_browse_files_desc">Opens the Vita3K+ storage folder (games, saves, config, logs) in the Android Files app. The same folder also appears as \"Vita3K+\" in the sidebar of any file manager that supports document providers, and no extra permissions are needed.</string>
+    <string name="settings_emulator_browse_files_unavailable">No system file browser found. Open the Files app and choose Vita3K+ from its sidebar or menu.</string>
+    <string name="documents_root_summary">Games, saves, config and logs</string>
 </resources>
