@@ -23,7 +23,7 @@ A clear and concise description of what you expected to happen.
 **Screenshots**
 If applicable, add screenshots to help explain your problem.
 
-**Desktop or Smartphone (please complete the following information):**
+**Desktop or Smartphone (please complete the following information):** !!VERY IMPORTANT!!
  - Device: What device make and model (and exact GPU Adreno, Mali, etc)
 
 **Additional context**

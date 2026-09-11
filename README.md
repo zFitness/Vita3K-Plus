@@ -10,6 +10,15 @@ https://github.com/zFitness/Vita3K-Plus/releases
 
 Android nightly APKs are published automatically by [`nightly-android.yml`](./.github/workflows/nightly-android.yml) under tags like `android-nightly-<build>-<sha>`.
 
+## Android notes
+
+> **Snapdragon / Adreno:** Use Turnip drivers for the best compatibility.
+
+> **Mali Users:** There are things that will definitely not work and most likely never work with Mali. Very little I can (or want) to do about that I'm afraid.
+
+> **Freezing or hangs:** Enable **Accurate Thread Scheduling** in Graphics settings.  
+> This is needed for games such as *Dead or Alive 5 Plus*, *Sonic*, *Samurai Warriors 3*, etc.
+
 ## Enhancements
 
 # v1.1 (Not Yet Released)
@@ -20,14 +29,26 @@ Android nightly APKs are published automatically by [`nightly-android.yml`](./.g
 - **Killzone** - Fix for the crash occurring at level 5
 - **Neptunia Re;Birth1** - Fix for crash after selecting New Game and background images not showing
 - **Little Big Planet** - "Vignette" shading and background images fixed
-- **Ys: Memories of Celcetta** Graphics Fixed
-- **Ragnarok Odyssey ACE** Graphics Fixed
-- **Ninja Gaiden Sigma 2 Plus** Graphics Fixed
+- **Ys: Memories of Celcetta** - Graphics Fixed
+- **Ragnarok Odyssey ACE** - Graphics Fixed
+- **Ninja Gaiden Sigma 2 Plus** - Graphics Fixed
 - **ModNation: Racers Road Trip** - Regression Fixed
 - **RESOGUN** - Graphics issues now fixed
 - **Omega Labyrinth** - Loading fixed by nishinji
+- **Dynasty Warriors 8** - Fixed text/graphics clipping
+- **Samurai Warriors 3** - Use Accurate Thread Scheduling to workaround loading bugs
+- **Gundam Breaker 3** - Almost all fixed. Still issues with main character's graphics.
+- **SteamWorld Dig** - Loads and plays
+- **UPPERS** - Graphics Fixed
+- **Madden 13** - Face textures fixed
+- **Oddworld: New'n'Tasty** - Graphics Fixed
+- **God Breaker 3** - Graphics Fixed
+- **Sword Art Online** - Latest game patch now works
+- **Disgaea 3** - Saving & Loading now work. liblocation implemented to hopefully stop the 50 min crashes.
+- **Borderlands 2** - Shorten time it checks for PSN
+- 
 - Defaults now to External Host for Windows and Native Buffer on Android. **Use these Memory Mapping options for the best compatibility**
-- Lots of memory and sound improvements
+- Lots of memory, timing, IME and sound improvements
 - Thanks to Reyes for all his help testing!
 
 # v1.0
